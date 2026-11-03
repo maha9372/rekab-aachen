@@ -118,7 +118,7 @@ async function loadData(){
     );
     out center tags;
     relation["route"="bicycle"](${bbox});
-    out geom (${bbox});`;
+    out geom(${bbox});`;
   status("در حال گرفتن داده از OpenStreetMap…");
   try {
     const res = await fetch("https://overpass-api.de/api/interpreter", { method:"POST", body:"data=" + encodeURIComponent(query) });
@@ -138,7 +138,11 @@ function draw(elements){
     const t = el.tags || {};
     const key = el.type + "/" + el.id;           // شناسه‌ی یکتا برای ذخیره‌ی نظر
     if (el.type === "relation" && t.route === "bicycle"){
-      const lines = (el.members || []).filter(m => m.geometry).map(m => m.geometry.map(p => [p.lat, p.lon]));
+      // بعضی نقطه‌ها خارج از نقشه‌اند و خالی (null) می‌آیند؛ آن‌ها را کنار می‌گذاریم
+      const lines = (el.members || [])
+        .filter(m => Array.isArray(m.geometry))
+        .map(m => m.geometry.filter(p => p && p.lat != null).map(p => [p.lat, p.lon]))
+        .filter(l => l.length > 1);
       if (!lines.length) continue;
       const line = L.polyline(lines, { color:"#2F7D4F", weight:4, opacity:.8 });
       const head = `<div class="popup"><h3>${escapeHtml(t.name || "مسیر دوچرخه بی‌نام")}</h3>
