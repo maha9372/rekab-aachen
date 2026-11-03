@@ -118,7 +118,7 @@ async function loadData(){
     );
     out center tags;
     relation["route"="bicycle"](${bbox});
-    out geom tags;`;
+    out geom (${bbox});`;
   status("در حال گرفتن داده از OpenStreetMap…");
   try {
     const res = await fetch("https://overpass-api.de/api/interpreter", { method:"POST", body:"data=" + encodeURIComponent(query) });
