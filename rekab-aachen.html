@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>رکاب آخن</title>
+<!-- کتابخانه‌ی نقشه: Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;800&display=swap">
+<style>
+  /* ===== ظاهر (CSS) ===== */
+  :root{ --ink:#18241E; --muted:#5E6E65; --route:#2F7D4F; --charge:#D9921A; --repair:#4A86B8; --shop:#8A5CB8; --bg:#FFFFFF; }
+  html,body{ height:100%; margin:0; }
+  body{ font-family:"Vazirmatn",Tahoma,sans-serif; color:var(--ink); display:flex; flex-direction:column; }
+  header{ padding:10px 16px; background:var(--bg); box-shadow:0 1px 4px rgba(0,0,0,.12); z-index:1000; }
+  header h1{ margin:0; font-size:1.3rem; }
+  .bar{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; align-items:center; }
+  button{ font:inherit; font-size:.85rem; border:1px solid #ccd; background:#fff; border-radius:999px; padding:3px 12px; cursor:pointer; }
+  button.main{ background:var(--route); color:#fff; border-color:var(--route); }
+  label.layer{ font-size:.85rem; display:flex; gap:4px; align-items:center; }
+  #status{ font-size:.8rem; color:var(--muted); width:100%; }
+  #map{ flex:1; }
+  .popup{ direction:rtl; font-family:"Vazirmatn",Tahoma,sans-serif; min-width:200px; }
+  .popup h3{ margin:0 0 4px; font-size:1rem; }
+  .stars{ color:#D9921A; }
+  .rev{ border-top:1px solid #eee; padding-top:4px; margin-top:4px; font-size:.85rem; }
+  .popup textarea{ width:100%; box-sizing:border-box; font:inherit; }
+</style>
+</head>
+<body>
+
+<!-- ===== اسکلت صفحه (HTML) ===== -->
+<header>
+  <h1>رکاب آخن</h1>
+  <div class="bar">
+    <button class="main" id="btnLoad">جستجو در همین محدوده</button>
+    <button id="btnMe">موقعیت من</button>
+    <label class="layer"><input type="checkbox" id="lyRoutes" checked> مسیرها</label>
+    <label class="layer"><input type="checkbox" id="lyCharge" checked> شارژ</label>
+    <label class="layer"><input type="checkbox" id="lyRepair" checked> ایستگاه تعمیر</label>
+    <label class="layer"><input type="checkbox" id="lyShop" checked> دوچرخه‌فروشی</label>
+    <div id="status">در حال آماده شدن…</div>
+  </div>
+</header>
+<div id="map"></div>
+
+<script>
+// ===== رفتار (JavaScript) =====
+
+// ۱. ساختن نقشه با مرکز آخن
+const map = L.map("map").setView([50.7753, 6.0839], 13);
+L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+}).addTo(map);
+
+// ۲. یک «لایه» برای هر نوع داده، تا بشه روشن/خاموششان کرد
+const layers = {
+  routes: L.layerGroup().addTo(map),
+  charge: L.layerGroup().addTo(map),
+  repair: L.layerGroup().addTo(map),
+  shop:   L.layerGroup().addTo(map)
+};
+const colors = { charge:"#D9921A", repair:"#4A86B8", shop:"#8A5CB8" };
+const names  = { charge:"ایستگاه شارژ دوچرخه", repair:"ایستگاه تعمیر", shop:"دوچرخه‌فروشی" };
+
+// ۳. نظرها روی همین دستگاه ذخیره می‌شوند (localStorage)
+function loadReviews(){ try { return JSON.parse(localStorage.getItem("rekab-reviews") || "{}"); } catch(e){ return {}; } }
+function saveReviews(r){ try { localStorage.setItem("rekab-reviews", JSON.stringify(r)); } catch(e){} }
+
+function reviewHtml(key){
+  const list = loadReviews()[key] || [];
+  const old = list.map(r => `<div class="rev"><span class="stars">${"★".repeat(r.s)}${"☆".repeat(5-r.s)}</span><br>${escapeHtml(r.t)}</div>`).join("");
+  return `${old || '<div class="rev">هنوز نظری ثبت نشده.</div>'}
+    <div class="rev">امتیاز:
+      <select data-key="${key}" class="rs"><option>5</option><option>4</option><option>3</option><option>2</option><option>1</option></select>
+      <textarea class="rt" rows="2" placeholder="نظرت…"></textarea>
+      <button class="rb" data-key="${key}">ثبت نظر</button>
+    </div>`;
+}
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+// وقتی دکمه‌ی «ثبت نظر» داخل پنجره‌ی کوچک زده شد
+map.on("popupopen", e => {
+  const el = e.popup.getElement();
+  const btn = el.querySelector(".rb");
+  if (!btn) return;
+  btn.onclick = () => {
+    const key = btn.dataset.key;
+    const s = +el.querySelector(".rs").value;
+    const t = el.querySelector(".rt").value.trim();
+    const all = loadReviews();
+    (all[key] = all[key] || []).push({ s, t });
+    saveReviews(all);
+    e.popup.setContent(e.popup._rekabHead + reviewHtml(key));
+  };
+});
+
+function bindPopup(layer, key, head){
+  const p = L.popup({ maxWidth: 280 });
+  p._rekabHead = head;
+  p.setContent(head + reviewHtml(key));
+  layer.bindPopup(p);
+}
+
+// ۴. پرسیدن از OpenStreetMap (از طریق Overpass API)
+async function loadData(){
+  if (map.getZoom() < 12) { status("لطفاً نقشه را کمی بزرگ‌تر کن (زوم کن) و دوباره بزن."); return; }
+  const b = map.getBounds();
+  const bbox = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(",");
+  const query = `
+    [out:json][timeout:25];
+    (
+      nwr["amenity"="charging_station"]["bicycle"="yes"](${bbox});
+      nwr["amenity"="bicycle_repair_station"](${bbox});
+      nwr["shop"="bicycle"](${bbox});
+    );
+    out center tags;
+    relation["route"="bicycle"](${bbox});
+    out geom tags;`;
+  status("در حال گرفتن داده از OpenStreetMap…");
+  try {
+    const res = await fetch("https://overpass-api.de/api/interpreter", { method:"POST", body:"data=" + encodeURIComponent(query) });
+    if (!res.ok) throw new Error("پاسخ سرور: " + res.status);
+    const data = await res.json();
+    draw(data.elements);
+  } catch(err) {
+    status("داده نیامد. شاید سرور شلوغ است؛ چند ثانیه بعد دوباره امتحان کن. (" + err.message + ")");
+  }
+}
+
+// ۵. کشیدن داده‌ها روی نقشه
+function draw(elements){
+  Object.values(layers).forEach(l => l.clearLayers());
+  let n = { routes:0, charge:0, repair:0, shop:0 };
+  for (const el of elements){
+    const t = el.tags || {};
+    const key = el.type + "/" + el.id;           // شناسه‌ی یکتا برای ذخیره‌ی نظر
+    if (el.type === "relation" && t.route === "bicycle"){
+      const lines = (el.members || []).filter(m => m.geometry).map(m => m.geometry.map(p => [p.lat, p.lon]));
+      if (!lines.length) continue;
+      const line = L.polyline(lines, { color:"#2F7D4F", weight:4, opacity:.8 });
+      const head = `<div class="popup"><h3>${escapeHtml(t.name || "مسیر دوچرخه بی‌نام")}</h3>
+        ${t.distance ? "طول: " + escapeHtml(t.distance) + " کیلومتر<br>" : ""}
+        ${t.network ? "شبکه: " + escapeHtml(t.network) : ""}`;
+      bindPopup(line, key, head);
+      line.addTo(layers.routes); n.routes++;
+    } else {
+      const kind = t.amenity === "charging_station" ? "charge" : t.amenity === "bicycle_repair_station" ? "repair" : "shop";
+      const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
+      if (lat == null) continue;
+      const m = L.circleMarker([lat, lon], { radius:8, color:"#fff", weight:2, fillColor:colors[kind], fillOpacity:1 });
+      const head = `<div class="popup"><h3>${escapeHtml(t.name || names[kind])}</h3>${names[kind]}
+        ${t.opening_hours ? "<br>ساعت کار: " + escapeHtml(t.opening_hours) : ""}`;
+      bindPopup(m, key, head);
+      m.addTo(layers[kind]); n[kind]++;
+    }
+  }
+  status(`پیدا شد: ${n.routes} مسیر، ${n.charge} ایستگاه شارژ، ${n.repair} ایستگاه تعمیر، ${n.shop} دوچرخه‌فروشی`);
+}
+
+function status(msg){ document.getElementById("status").textContent = msg; }
+
+// ۶. دکمه‌ها و روشن/خاموش کردن لایه‌ها
+document.getElementById("btnLoad").onclick = loadData;
+document.getElementById("btnMe").onclick = () => {
+  if (!navigator.geolocation) { status("مرورگر موقعیت را پشتیبانی نمی‌کند."); return; }
+  navigator.geolocation.getCurrentPosition(
+    p => { const ll = [p.coords.latitude, p.coords.longitude]; map.setView(ll, 15); L.circleMarker(ll, {radius:7, color:"#18241E"}).addTo(map).bindPopup("تو اینجایی").openPopup(); },
+    () => status("موقعیت در دسترس نیست. اجازه‌ی مکان را در مرورگر بده.")
+  );
+};
+[["lyRoutes","routes"],["lyCharge","charge"],["lyRepair","repair"],["lyShop","shop"]].forEach(([id, k]) => {
+  document.getElementById(id).onchange = e => e.target.checked ? layers[k].addTo(map) : map.removeLayer(layers[k]);
+});
+
+loadData(); // بار اول خودکار
+</script>
+</body>
+</html>
